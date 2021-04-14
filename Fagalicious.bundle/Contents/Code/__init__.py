@@ -285,7 +285,7 @@ class Fagalicious(Agent.Movies):
                 searchQuery = html.xpath('//a[@class="next page-numbers"]/@href')[0]
                 self.log('SEARCH:: Next Page Search Query: %s', searchQuery)
                 pageNumber = int(html.xpath('//span[@class="page-numbers current"]/text()[normalize-space()]')[0])
-                morePages = True if pageNumber <= 10 else False
+                morePages = True if pageNumber <= 5 else False
             except:
                 searchQuery = ''
                 self.log('SEARCH:: No More Pages Found')

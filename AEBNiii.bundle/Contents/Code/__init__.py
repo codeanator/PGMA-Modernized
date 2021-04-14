@@ -558,7 +558,13 @@ class AEBNiii(Agent.Movies):
                 allscenes += scene
 
                 if isChapters:
-                    sceneTitle = heading.split('-')[0].strip() + ' - ' + stars + ' (' + acts + ')'
+                    sceneTitle = ''
+                    if starsList:
+                        sceneTitle += stars
+                    else:
+                        sceneTitle += heading.split('-')[0].strip()
+                    if actsList:
+                        sceneTitle += ' (' + acts + ')'
                     sceneDuration = self.durationSeconds(heading.split('-')[1].strip())*1000
                     totalSceneDuration += sceneDuration
                     chapter = {}
@@ -579,11 +585,12 @@ class AEBNiii(Agent.Movies):
         if isChapters and len(newChapters)>0:
             chapterDelta = fileDuration - totalSceneDuration
             # Note : we assume that potential delta is due to disclamers and intro at the beginning of the movie
-            for newChapter in newChapters:
-                chapter = metadata.chapters.new()
-                chapter.title = newChapter['title']
-                chapter.start_time_offset = newChapter['start_time_offset'] + chapterDelta
-                chapter.end_time_offset = newChapter['end_time_offset'] + chapterDelta
+            if chapterDelta >= 0:
+                for newChapter in newChapters:
+                    chapter = metadata.chapters.new()
+                    chapter.title = newChapter['title']
+                    chapter.start_time_offset = newChapter['start_time_offset'] + chapterDelta
+                    chapter.end_time_offset = newChapter['end_time_offset'] + chapterDelta
 
         # combine and update
         self.log(LOG_SUBLINE)

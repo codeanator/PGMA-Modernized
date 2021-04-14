@@ -80,6 +80,9 @@ DATEFORMAT = '%m/%d/%Y'
 # Website Language
 SITE_LANGUAGE = 'en'
 
+# Max delta between file duration and film duration for chapters
+DURATION_DETLA_THRESHOLD = 90000
+
 # ----------------------------------------------------------------------------------------------------------------------------------
 def Start():
     ''' initialise process '''
@@ -436,7 +439,66 @@ class GayDVDEmpire(Agent.Movies):
         except Exception as e:
             self.log('UPDATE:: Error getting Poster/Art: %s', e)
 
-        # 2f.   Summary = IAFD Legend + Synopsis
+        # 2f. Chapters
+        isChapters = False
+
+        try:
+            htmlduration = html.xpath('//small[text()="Length: "]/following-sibling::text()')[0].strip()
+            self.log('UPDATE:: HTML duration: %s', htmlduration)
+            htmlduration = htmlduration.replace('hrs.', ':').replace('mins.','').replace(' ', '') + ':00'
+            siteDuration = self.durationSeconds(htmlduration)*1000
+            fileDuration = int(long(getattr(media.items[0].parts[0], 'duration')))
+            self.log('UPDATE:: Running time from site: %s', siteDuration)
+            self.log('UPDATE:: Running time from file: %s', fileDuration)
+            durationDelta = fileDuration - siteDuration
+            self.log('UPDATE:: Duration delta: %s', durationDelta)
+            if abs(durationDelta) < DURATION_DETLA_THRESHOLD:
+                isChapters = True
+        except Exception as e:
+            self.log('UPDATE:: Error getting duration: %s', e)
+        
+        # Scene Breakdown
+        self.log(LOG_SUBLINE)
+        if isChapters:
+            metadata.chapters.clear()
+            offset = 0
+            totalSceneDuration = 0
+            newChapters=[]
+            try:
+                htmlscenes = html.xpath('//a[@label="Scene Title"]//ancestor::div[@class="row"]')
+                self.log('UPDATE:: %s Scenes Found: %s', len(htmlscenes), htmlscenes)
+                for htmlscene in htmlscenes:
+                    self.log('UPDATE:: Scene: %s', htmlscene.text_content())
+                    sceneTitle = htmlscene.xpath('//a[@label="Scene Title"]/text()')[0].strip()
+                    sceneDurationStr = htmlscene.xpath('//span[@class="badge"]/text()')[0]
+                    sceneDurationStr = sceneDurationStr.replace('min', ':').replace(' ', '') + '00'
+                    self.log('UPDATE:: Scene Duration: %s', sceneDurationStr)
+                    sceneDuration = self.durationSeconds(sceneDurationStr) * 1000
+                    totalSceneDuration += sceneDuration
+                    chapter = {}
+                    chapter['title'] = sceneTitle
+                    chapter['start_time_offset'] = offset
+                    offset = offset + sceneDuration
+                    chapter['end_time_offset'] = offset
+                    newChapters.append(chapter)
+
+            except Exception as e:
+                allscenes = ''
+                self.log('UPDATE:: Error getting Scene Breakdown: %s', e)
+        
+        # adding chapters
+        if isChapters and len(newChapters)>0:
+            chapterDelta = fileDuration - totalSceneDuration
+            # Note : we assume that potential delta is due to disclamers and intro at the beginning of the movie
+            if chapterDelta >= 0:
+                for newChapter in newChapters:
+                    chapter = metadata.chapters.new()
+                    self.log('UPDATE:: Adding chapter - Title: %s - Beginning: %s', newChapter['title'], newChapter['start_time_offset'] + chapterDelta)
+                    chapter.title = newChapter['title']
+                    chapter.start_time_offset = newChapter['start_time_offset'] + chapterDelta
+                    chapter.end_time_offset = newChapter['end_time_offset'] + chapterDelta
+
+        # 2g.   Summary = IAFD Legend + Synopsis
         self.log(LOG_BIGLINE)
         # synopsis
         try:
