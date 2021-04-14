@@ -82,6 +82,9 @@ DATEFORMAT = '%b %d, %Y'
 # Website Language
 SITE_LANGUAGE = 'en'
 
+# Max delta between file duration and film duration for chapters
+DURATION_DETLA_THRESHOLD = 90000
+
 # ----------------------------------------------------------------------------------------------------------------------------------
 def Start():
     ''' initialise process '''
@@ -516,8 +519,9 @@ class GayHotMovies(Agent.Movies):
         except Exception as e:
             self.log('UPDATE:: Error getting Reviews: %s', e)
 
-        # 2h.   Summary = IAFD Legend + Synopsis + Scene Breakdown
+        # 2h.   Summary = IAFD Legend + Synopsis + Scene Breakdown + Chapter
         self.log(LOG_BIGLINE)
+        isChapters = False
         # synopsis
         try:
             synopsis = html.xpath('//span[contains(@class,"video_description")]//text()')
@@ -530,8 +534,28 @@ class GayHotMovies(Agent.Movies):
             synopsis = re.sub(pattern, '', synopsis)
 
         except Exception as e:
-            synopsis = ''
             self.log('UPDATE:: Error getting Synopsis: %s', e)
+        
+        # duration
+        try:
+            htmlDuration = html.xpath('//span[@datetime]/text()')[0].strip()
+            self.log('UPDATE:: Extracted html duration : %s', htmlDuration)
+            siteDuration = self.durationSeconds(htmlDuration)*1000
+            fileDuration = int(long(getattr(media.items[0].parts[0], 'duration')))
+            self.log('UPDATE:: Running time from site: %s', siteDuration)
+            self.log('UPDATE:: Running time from file: %s', fileDuration)
+            durationDelta = fileDuration - siteDuration
+            self.log('UPDATE:: Duration delta: %s', durationDelta)
+            if abs(durationDelta) < DURATION_DETLA_THRESHOLD:
+                isChapters = True
+        except Exception as e:
+            self.log('UPDATE:: Error getting duration: %s', e)
+
+        if isChapters:
+            metadata.chapters.clear()
+            offset = 0
+            totalSceneDuration = 0
+            newChapters=[]
 
         # Scene Breakdown
         self.log(LOG_SUBLINE)
@@ -568,9 +592,34 @@ class GayHotMovies(Agent.Movies):
                     acts = ', '.join(actsList)
                     scene += '\nSex Acts: {0}'.format(acts)
                 allscenes += scene
+
+                if isChapters:
+                    sceneTitle = heading.split('-')[0].strip() + ' - ' + stars + ' (' + acts + ')'
+                    sceneDurationStr = heading.split('-')[1].replace('min', ':').replace('sec','').replace('s','').replace(' ', '')
+                    self.log('UPDATE:: Scene Duration: %s', sceneDurationStr)
+                    sceneDuration = self.durationSeconds(sceneDurationStr) * 1000
+                    totalSceneDuration += sceneDuration
+                    chapter = {}
+                    chapter['title'] = sceneTitle
+                    chapter['start_time_offset'] = offset
+                    offset = offset + sceneDuration
+                    chapter['end_time_offset'] = offset
+                    newChapters.append(chapter)
+                    self.log('UPDATE:: Chapter - Duration: %s - Title: %s', sceneDuration, sceneTitle)
+
         except Exception as e:
             allscenes = ''
             self.log('UPDATE:: Error getting Scene Breakdown: %s', e)
+        
+        # adding chapters
+        if isChapters and len(newChapters)>0:
+            chapterDelta = fileDuration - totalSceneDuration
+            # Note : we assume that potential delta is due to disclamers and intro at the beginning of the movie
+            for newChapter in newChapters:
+                chapter = metadata.chapters.new()
+                chapter.title = newChapter['title']
+                chapter.start_time_offset = newChapter['start_time_offset'] + chapterDelta
+                chapter.end_time_offset = newChapter['end_time_offset'] + chapterDelta
 
         # combine and update
         self.log(LOG_SUBLINE)

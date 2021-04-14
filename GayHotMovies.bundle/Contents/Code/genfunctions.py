@@ -275,6 +275,17 @@ def TranslateString(self, myString, language):
 
     return myString if myString else ' '     # return single space to initialise metadata summary field
 
+
+# -------------------------------------------------------------------------------------------------------------------------------
+
+def durationSeconds(self, timeStr):
+    ''' Get Seconds from time. '''
+    arrayTime = timeStr.split(':')
+    if len(arrayTime) == 3:
+        return int(arrayTime[0]) * 3600 + int(arrayTime[1]) * 60 + int(arrayTime[2])
+    elif len(arrayTime) == 2:
+        return int(arrayTime[0]) * 60 + int(arrayTime[1])
+
 # -------------------------------------------------------------------------------------------------------------------------------
 def log(self, message, *args):
     ''' log messages '''

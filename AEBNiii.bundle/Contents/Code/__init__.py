@@ -77,6 +77,9 @@ DATEFORMAT = '%b %d, %Y'
 # Website Language
 SITE_LANGUAGE = 'en'
 
+# Max delta between file duration and film duration for chapters
+DURATION_DETLA_THRESHOLD = 90000
+
 # ----------------------------------------------------------------------------------------------------------------------------------
 def Start():
     ''' initialise process '''
@@ -487,7 +490,7 @@ class AEBNiii(Agent.Movies):
         except Exception as e:
             self.log('UPDATE:: Error getting Poster/Art: %s', e)
 
-        # 2f.   Summary = IAFD Legend + Synopsis + Scene Information
+        # 2f.   Summary = IAFD Legend + Synopsis + Scene Information + Chapters
         # synopsis
         try:
             synopsis = html.xpath('//div[@class="dts-section-page-detail-description-body"]/text()')[0].strip()
@@ -496,14 +499,37 @@ class AEBNiii(Agent.Movies):
             synopsis = ''
             self.log('UPDATE:: Error getting Synopsis: %s', e)
 
-        # scene information
+        # scene information and chapters
         self.log(LOG_SUBLINE)
         allscenes = ''
         allacts = []
+        isChapters = False
+
+        try:
+            htmlduration = html.xpath('//li[@class="section-detail-list-item-duration"]/text()')[0].strip()
+            siteDuration = self.durationSeconds(htmlduration)*1000
+            fileDuration = int(long(getattr(media.items[0].parts[0], 'duration')))
+            self.log('UPDATE:: Running time from site: %s', siteDuration)
+            self.log('UPDATE:: Running time from file: %s', fileDuration)
+            durationDelta = fileDuration - siteDuration
+            self.log('UPDATE:: Duration delta: %s', durationDelta)
+            if abs(durationDelta) < DURATION_DETLA_THRESHOLD:
+                isChapters = True
+        except Exception as e:
+            self.log('UPDATE:: Error getting duration: %s. Do we process chapters? %s', e, isChapters)
+
+        if isChapters:
+            metadata.chapters.clear()
+            offset = 0
+            totalSceneDuration = 0
+            newChapters=[]
+
         try:
             htmlheadings = html.xpath('//header[@class="dts-panel-header"]/div/h1[contains(text(),"Scene")]/text()')
             htmlscenes = html.xpath('//div[@class="dts-scene-info dts-list-attributes"]')
             self.log('UPDATE:: %s Scenes Found: %s', len(htmlscenes), htmlscenes)
+            if len(htmlscenes) <= 1:
+                isChapters = False
             for (heading, htmlscene) in zip(htmlheadings, htmlscenes):
                 settingsList = htmlscene.xpath('./ul/li[descendant::span[text()="Settings:"]]/a/text()')
                 if settingsList:
@@ -530,11 +556,34 @@ class AEBNiii(Agent.Movies):
                     acts = ', '.join(actsList)
                     scene += '\nSex Acts: {0}'.format(acts)
                 allscenes += scene
+
+                if isChapters:
+                    sceneTitle = heading.split('-')[0].strip() + ' - ' + stars + ' (' + acts + ')'
+                    sceneDuration = self.durationSeconds(heading.split('-')[1].strip())*1000
+                    totalSceneDuration += sceneDuration
+                    chapter = {}
+                    chapter['title'] = sceneTitle
+                    chapter['start_time_offset'] = offset
+                    offset = offset + sceneDuration
+                    chapter['end_time_offset'] = offset
+                    newChapters.append(chapter)
+                    self.log('UPDATE:: Chapter - Duration: %s - Title: %s', sceneDuration, sceneTitle)
+
         except Exception as e:
             scene = ''
             self.log('UPDATE:: Error getting Scene Breakdown: %s', e)
 
         allscenes = '\nScene Breakdown:\n{0}'.format(allscenes) if allscenes else ''
+
+        # adding chapters
+        if isChapters and len(newChapters)>0:
+            chapterDelta = fileDuration - totalSceneDuration
+            # Note : we assume that potential delta is due to disclamers and intro at the beginning of the movie
+            for newChapter in newChapters:
+                chapter = metadata.chapters.new()
+                chapter.title = newChapter['title']
+                chapter.start_time_offset = newChapter['start_time_offset'] + chapterDelta
+                chapter.end_time_offset = newChapter['end_time_offset'] + chapterDelta
 
         # combine and update
         self.log(LOG_SUBLINE)
