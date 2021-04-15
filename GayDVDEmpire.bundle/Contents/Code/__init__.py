@@ -447,7 +447,9 @@ class GayDVDEmpire(Agent.Movies):
             self.log('UPDATE:: HTML duration: %s', htmlduration)
             htmlduration = htmlduration.replace('hrs.', ':').replace('mins.','').replace(' ', '') + ':00'
             siteDuration = self.durationSeconds(htmlduration)*1000
-            fileDuration = int(long(getattr(media.items[0].parts[0], 'duration')))
+            fileDuration = 0
+            for part in media.items[0].parts:
+                fileDuration += int(long(getattr(part, 'duration')))
             self.log('UPDATE:: Running time from site: %s', siteDuration)
             self.log('UPDATE:: Running time from file: %s', fileDuration)
             durationDelta = fileDuration - siteDuration

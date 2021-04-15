@@ -541,7 +541,9 @@ class GayHotMovies(Agent.Movies):
             htmlDuration = html.xpath('//span[@datetime]/text()')[0].strip()
             self.log('UPDATE:: Extracted html duration : %s', htmlDuration)
             siteDuration = self.durationSeconds(htmlDuration)*1000
-            fileDuration = int(long(getattr(media.items[0].parts[0], 'duration')))
+            fileDuration = 0
+            for part in media.items[0].parts:
+                fileDuration += int(long(getattr(part, 'duration')))
             self.log('UPDATE:: Running time from site: %s', siteDuration)
             self.log('UPDATE:: Running time from file: %s', fileDuration)
             durationDelta = fileDuration - siteDuration
